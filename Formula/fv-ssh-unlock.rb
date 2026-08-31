@@ -9,6 +9,7 @@ class FvSshUnlock < Formula
   depends_on "go" => :build
 
   def install
+    ENV["CGO_ENABLED"] = "0"
     ldflags = "-s -w -buildid= -X main.version=#{version}"
     system "go", "build", *std_go_args(ldflags: ldflags, tags: "keyring"),
            "-trimpath", "./cmd/fv-ssh-unlock"
