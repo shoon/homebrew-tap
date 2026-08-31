@@ -6,6 +6,12 @@ class FvSshUnlock < Formula
   license "Apache-2.0"
   head "https://github.com/shoon/fv-ssh-unlock.git", branch: "main"
 
+  bottle do
+    root_url "https://github.com/shoon/homebrew-tap/releases/download/fv-ssh-unlock-0.2.0-rc.2"
+    sha256 cellar: :any_skip_relocation, arm64_tahoe:  "6b336a0568100a85a0c135fdc070c436b8c2c316d81f43fd480998233b3ad64e"
+    sha256 cellar: :any_skip_relocation, x86_64_linux: "9281801c598bf69253376a259a7855d503feb7b33b5fc4595b776a69dc576f78"
+  end
+
   depends_on "go" => :build
 
   def install
