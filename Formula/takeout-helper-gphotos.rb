@@ -1,7 +1,6 @@
 class TakeoutHelperGphotos < Formula
   desc "Organize Google Photos Takeout archives"
   homepage "https://github.com/shoon/takeout-helper-gphotos"
-  version "0.1.2"
   license "Apache-2.0"
 
   on_macos do
