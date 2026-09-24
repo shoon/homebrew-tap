@@ -53,4 +53,4 @@ jobs:
           PYTHON
           brew test shoon/tap/fv-ssh-unlock
           test "$(git -C "$tap_path" ls-remote origin refs/heads/main | cut -f1)" = "$tested_main"
-          printf 'Published Homebrew bottles installed and tested from main `%s`.\n' "$tested_main" >> "$GITHUB_STEP_SUMMARY"
+          printf 'Published Homebrew bottles installed and tested from main %s.\n' "$tested_main" >> "$GITHUB_STEP_SUMMARY"
