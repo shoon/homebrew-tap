@@ -40,7 +40,7 @@ jobs:
     steps:
       # This SHA-pinned action does not check out or execute PR code.
       - id: approval
-        uses: shoon/fv-ssh-unlock/.github/actions/release-tools@05a045b9bab8cf91376b680c4aa926ffb8fb06cf # reviewed release automation
+        uses: shoon/fv-ssh-unlock/.github/actions/release-tools@b279c0d42db9efb6761acba23d1130334f038a0f # reviewed release automation
         with:
           operation: publish-check
   publish:
@@ -56,7 +56,7 @@ jobs:
       pull-requests: write
     steps:
       - name: Recheck authorization, source, and artifact integrity
-        uses: shoon/fv-ssh-unlock/.github/actions/release-tools@05a045b9bab8cf91376b680c4aa926ffb8fb06cf # reviewed release automation
+        uses: shoon/fv-ssh-unlock/.github/actions/release-tools@b279c0d42db9efb6761acba23d1130334f038a0f # reviewed release automation
         with:
           operation: publish-check
       - name: Set up trusted Homebrew main
