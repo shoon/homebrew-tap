@@ -1,0 +1,131 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Publish verified fv-ssh-unlock rc.4 bottles
+on:
+  push:
+    branches: [maintenance/publish-fv-ssh-unlock-rc4]
+    paths: [.github/workflows/publish-fv-ssh-unlock-rc4.yml]
+permissions: {}
+concurrency:
+  group: publish-fv-ssh-unlock-rc4-request
+  cancel-in-progress: false
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: write
+      contents: read
+      checks: read
+      statuses: read
+      pull-requests: read
+    steps:
+      - name: Verify exact PR, passing checks and bottle provenance, then start existing publisher
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import urllib.error
+          import urllib.request
+
+          REPO = 'shoon/homebrew-tap'
+          BRANCH = 'maintenance/publish-fv-ssh-unlock-rc4'
+          BASE = 'd03723394be0c57d091895a640089287a36da85a'
+          HEAD = '75a980762110667a81a98297113559797b9d3829'
+          TEST_RUN = 36028740446
+          WORKFLOW_BLOB = '4bed83cbaa6d828aadf46cd4fa7c93d7dda30ab7'
+          TAG = 'fv-ssh-unlock-0.2.0-rc.4'
+          ARTIFACTS = {
+              'bottles_ubuntu-latest': (10820284013, 'sha256:9e0009b2df206e62561ad810ad20d8537ea14e9feb1f3d20b8302cabb9319c08'),
+              'bottles_macos-26': (10820029070, 'sha256:46d8ffda39c66126e31f0b5e29b9f8204e0425a667b87e73eadbf6bdc37bd5a7'),
+          }
+
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  return None
+
+          opener = urllib.request.build_opener(NoRedirect)
+
+          def require(condition, message):
+              if not condition:
+                  raise RuntimeError(message)
+
+          def api(path, payload=None, missing_ok=False):
+              require(path.startswith('/') and not path.startswith('//'), 'Invalid API path')
+              request = urllib.request.Request(
+                  'https://api.github.com/repos/' + REPO + path,
+                  data=None if payload is None else json.dumps(payload).encode(),
+                  headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                           'Accept': 'application/vnd.github+json',
+                           'Content-Type': 'application/json',
+                           'X-GitHub-Api-Version': '2022-11-28'})
+              try:
+                  with opener.open(request, timeout=30) as response:
+                      content = response.read()
+                      return json.loads(content) if content else None
+              except urllib.error.HTTPError as error:
+                  if missing_ok and error.code == 404:
+                      return None
+                  raise RuntimeError('GitHub API HTTP ' + str(error.code) + ' for ' + path) from None
+
+          def pages(path, key=None):
+              results = []
+              for page in range(1, 11):
+                  response = api(path + ('&' if '?' in path else '?') + f'per_page=100&page={page}')
+                  entries = response[key] if key else response
+                  require(isinstance(entries, list), 'Unexpected API collection')
+                  results.extend(entries)
+                  if len(entries) < 100:
+                      return results
+              raise RuntimeError('Incomplete API pagination')
+
+          def check_refs():
+              require(api('/git/ref/heads/main')['object']['sha'] == BASE, 'Main changed; do not publish stale integration')
+              pr = api('/pulls/6')
+              require(pr['state'] == 'open' and not pr['merged'] and not pr['draft'], 'PR is not open and ready')
+              require(pr['head']['sha'] == HEAD and pr['head']['repo']['full_name'] == REPO, 'PR head changed')
+              require(pr['base']['ref'] == 'main' and pr['base']['sha'] == BASE, 'PR base changed')
+              require(pr['mergeable'] is True, 'PR is not confirmed mergeable')
+
+          require(os.environ['GITHUB_REPOSITORY'] == REPO, 'Unexpected repository')
+          require(os.environ['GITHUB_REF'] == 'refs/heads/' + BRANCH, 'Unexpected trigger branch')
+          require(os.environ['GITHUB_EVENT_NAME'] == 'push', 'Unexpected event')
+          require(os.environ['GITHUB_RUN_ATTEMPT'] == '1', 'Do not rerun a publication dispatcher')
+          check_refs()
+          require(api('/contents/.github/workflows/publish.yml?ref=' + BASE)['sha'] == WORKFLOW_BLOB, 'Publisher changed')
+          files = pages('/pulls/6/files')
+          require(len(files) == 1 and files[0]['filename'] == 'Formula/fv-ssh-unlock.rb' and files[0]['sha'] == '578d23310b7d5e046b84dd11409871251cd3823e', 'Formula diff changed')
+          runs = pages('/actions/runs?head_sha=' + HEAD + '&event=pull_request', 'workflow_runs')
+          tests = [r for r in runs if r['path'] == '.github/workflows/tests.yml']
+          require(bool(tests), 'No formula tests')
+          run = max(tests, key=lambda item: item['id'])
+          require(run['id'] == TEST_RUN and run['run_attempt'] == 1 and run['head_sha'] == HEAD and run['status'] == 'completed' and run['conclusion'] == 'success', 'Latest formula CI no longer matches verified artifacts')
+          checks = pages('/commits/' + HEAD + '/check-runs?filter=latest', 'check_runs')
+          require({'test-bot (macos-26)', 'test-bot (ubuntu-latest, ghcr.io/homebrew/brew:main, --privileged)'} <= {c['name'] for c in checks}, 'Missing platform checks')
+          require(all(c['head_sha'] == HEAD and c['status'] == 'completed' and c['conclusion'] == 'success' for c in checks), 'A current check has not passed')
+          statuses = {}
+          for status in pages('/commits/' + HEAD + '/statuses'):
+              statuses.setdefault(status['context'], status)
+          require(all(s['state'] == 'success' for s in statuses.values()), 'A current legacy status has not passed')
+          reviews = {}
+          for review in pages('/pulls/6/reviews'):
+              if review['state'] in ('APPROVED', 'CHANGES_REQUESTED', 'DISMISSED'):
+                  reviews[review['user']['login']] = review['state']
+          require('CHANGES_REQUESTED' not in reviews.values(), 'Outstanding requested changes')
+          artifacts = pages(f'/actions/runs/{TEST_RUN}/artifacts', 'artifacts')
+          require({a['name'] for a in artifacts} == set(ARTIFACTS), 'Unexpected bottle artifacts')
+          for item in artifacts:
+              require((item['id'], item['digest']) == ARTIFACTS[item['name']] and not item['expired'] and item['workflow_run']['head_sha'] == HEAD, 'Bottle artifact provenance mismatch')
+          require(api('/releases/tags/' + TAG, missing_ok=True) is None, 'Bottle release already exists; do not republish')
+          require(api('/git/ref/tags/' + TAG, missing_ok=True) is None, 'Bottle tag already exists; inspect before publishing')
+          recent_runs = pages('/actions/runs?event=workflow_dispatch', 'workflow_runs')
+          require(not any(r['path'] == '.github/workflows/publish.yml' and r['status'] != 'completed' for r in recent_runs), 'Another bottle publisher is active')
+          check_refs()
+          api('/actions/workflows/publish.yml/dispatches', {'ref': 'main', 'inputs': {'pull_request': '6', 'head_sha': HEAD}})
+          message = 'Dispatched existing brew pr-pull on main for PR #6 at ' + HEAD + '. This incorporates the formula and publishes its verified bottles. Verify the downstream workflow and package feed before declaring completion.'
+          print(message, flush=True)
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write(message + '\n')
+          PY
