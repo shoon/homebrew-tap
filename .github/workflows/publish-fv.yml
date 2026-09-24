@@ -1,0 +1,90 @@
+name: Publish verified fv-ssh-unlock bottles
+on:
+  issue_comment:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      pull_request:
+        description: Open fv-ssh-unlock formula PR number
+        type: string
+        required: true
+      head_sha:
+        description: Full approved PR head SHA (40 lowercase hex characters)
+        type: string
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: homebrew-fv-publication
+  cancel-in-progress: false
+jobs:
+  authorize:
+    if: >-
+      github.repository == 'shoon/homebrew-tap' && github.ref == 'refs/heads/main' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event.issue.pull_request && startsWith(github.event.comment.body, '/publish ')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+      checks: read
+      statuses: read
+      issues: read
+      pull-requests: read
+    outputs:
+      pr: ${{ steps.approval.outputs.pr }}
+      head: ${{ steps.approval.outputs.head }}
+      base: ${{ steps.approval.outputs.base }}
+      tag: ${{ steps.approval.outputs.tag }}
+    steps:
+      # This SHA-pinned action does not check out or execute PR code.
+      - id: approval
+        uses: shoon/fv-ssh-unlock/.github/actions/release-tools@b279c0d42db9efb6761acba23d1130334f038a0f # reviewed release automation
+        with:
+          operation: publish-check
+  publish:
+    needs: authorize
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      actions: write
+      checks: read
+      statuses: read
+      issues: read
+      pull-requests: write
+    steps:
+      - name: Recheck authorization, source, and artifact integrity
+        uses: shoon/fv-ssh-unlock/.github/actions/release-tools@b279c0d42db9efb6761acba23d1130334f038a0f # reviewed release automation
+        with:
+          operation: publish-check
+      - name: Set up trusted Homebrew main
+        uses: Homebrew/actions/setup-homebrew@3cdb78d0f62ad29dd32de765782654f4eedea607 # 2026.08.31.1
+        with:
+          token: ${{ github.token }}
+      - id: git_setup
+        uses: Homebrew/actions/git-user-config@3cdb78d0f62ad29dd32de765782654f4eedea607 # 2026.08.31.1
+      - name: Incorporate approved formula and publish its tested bottles
+        env:
+          HOMEBREW_GITHUB_API_TOKEN: ${{ github.token }}
+          HOMEBREW_GIT_COMMITTER_NAME: ${{ steps.git_setup.outputs.name }}
+          HOMEBREW_GIT_COMMITTER_EMAIL: ${{ steps.git_setup.outputs.email }}
+          APPROVED_HEAD: ${{ needs.authorize.outputs.head }}
+          APPROVED_BASE: ${{ needs.authorize.outputs.base }}
+          PULL_REQUEST: ${{ needs.authorize.outputs.pr }}
+        run: |
+          set -euo pipefail
+          actual_main="$(git ls-remote origin refs/heads/main | cut -f1)"
+          test "$actual_main" = "$APPROVED_BASE"
+          test "$(git rev-parse HEAD)" = "$APPROVED_BASE"
+          brew pr-pull --debug --tap="$GITHUB_REPOSITORY" --head-sha="$APPROVED_HEAD" "$PULL_REQUEST"
+          # Never silently rebase onto a newly changed main after artifact tests.
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$APPROVED_BASE"
+          git push origin HEAD:main
+      - name: Start installation test on the newly published feed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api --method POST "repos/$GITHUB_REPOSITORY/actions/workflows/feed-smoke.yml/dispatches" -f ref=main

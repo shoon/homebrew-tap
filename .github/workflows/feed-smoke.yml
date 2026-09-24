@@ -1,0 +1,56 @@
+name: Feed installation smoke test
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  pull_request:
+    paths: ['.github/workflows/feed-smoke.yml']
+permissions:
+  contents: read
+concurrency:
+  group: feed-smoke-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  install:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-26, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@3cdb78d0f62ad29dd32de765782654f4eedea607 # 2026.08.31.1
+        with:
+          token: ${{ github.token }}
+      - name: Install only from the actual published main feed
+        env:
+          EXPECTED_EVENT_SHA: ${{ github.sha }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          tap_path="$(brew --repository shoon/tap)"
+          git -C "$tap_path" fetch origin main
+          tested_main="$(git -C "$tap_path" rev-parse FETCH_HEAD)"
+          if [[ "$EVENT_NAME" != 'pull_request' ]]; then
+            test "$tested_main" = "$EXPECTED_EVENT_SHA"
+          fi
+          git -C "$tap_path" checkout --detach "$tested_main"
+          export HOMEBREW_NO_AUTO_UPDATE=1
+          brew uninstall --force fv-ssh-unlock >/dev/null 2>&1 || true
+          brew install --force-bottle shoon/tap/fv-ssh-unlock
+          brew info --json=v2 shoon/tap/fv-ssh-unlock > "$RUNNER_TEMP/fv-installed.json"
+          python3 - "$RUNNER_TEMP/fv-installed.json" <<'PYTHON'
+          import json, subprocess, sys
+          info = json.load(open(sys.argv[1]))['formulae'][0]
+          installed = info['installed']
+          assert len(installed) == 1 and installed[0]['poured_from_bottle'], 'Source fallback is not a passing bottle test'
+          version = info['versions']['stable']
+          assert installed[0]['version'] == version, 'Installed version differs from feed'
+          binary = subprocess.check_output(['brew', '--prefix', 'fv-ssh-unlock'], text=True).strip() + '/bin/fv-ssh-unlock'
+          assert version in subprocess.check_output([binary, '--version'], text=True)
+          print('Verified published bottle installation:', version)
+          PYTHON
+          brew test shoon/tap/fv-ssh-unlock
+          test "$(git -C "$tap_path" ls-remote origin refs/heads/main | cut -f1)" = "$tested_main"
+          printf 'Published Homebrew bottles installed and tested from main %s.\n' "$tested_main" >> "$GITHUB_STEP_SUMMARY"
