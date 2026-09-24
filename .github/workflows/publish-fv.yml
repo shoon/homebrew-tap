@@ -60,11 +60,11 @@ jobs:
         with:
           operation: publish-check
       - name: Set up trusted Homebrew main
-        uses: Homebrew/actions/setup-homebrew@3cdb78d0f62ad29dd32de765782654f4eedea607 # 2026.08.31.1
+        uses: Homebrew/actions/setup-homebrew@848c272c7bfe984a197bd4d16383f4c106ec61e6 # 2026.09.21.1
         with:
           token: ${{ github.token }}
       - id: git_setup
-        uses: Homebrew/actions/git-user-config@3cdb78d0f62ad29dd32de765782654f4eedea607 # 2026.08.31.1
+        uses: Homebrew/actions/git-user-config@848c272c7bfe984a197bd4d16383f4c106ec61e6 # 2026.09.21.1
       - name: Incorporate approved formula and publish its tested bottles
         env:
           HOMEBREW_GITHUB_API_TOKEN: ${{ github.token }}
