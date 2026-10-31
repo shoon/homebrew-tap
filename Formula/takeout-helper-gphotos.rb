@@ -5,21 +5,21 @@ class TakeoutHelperGphotos < Formula
 
   on_macos do
     if Hardware::CPU.arm?
-      url "https://github.com/shoon/takeout-helper-gphotos/releases/download/v0.1.3/takeout-helper-gphotos-v0.1.3-macos-arm64.tar.gz"
-      sha256 "f71ded8e6400e12ed66b0fab62ecf05644226e6a0f38acc9334b326156b4e26e"
+      url "https://github.com/shoon/takeout-helper-gphotos/releases/download/v0.1.4/takeout-helper-gphotos-v0.1.4-macos-arm64.tar.gz"
+      sha256 "1081f0b8b99bd8805c9de6c6bf4971fe1180a1a2e80ebe047c7aa44c489c079c"
     else
-      url "https://github.com/shoon/takeout-helper-gphotos/releases/download/v0.1.3/takeout-helper-gphotos-v0.1.3-macos-x64.tar.gz"
-      sha256 "db8bb11353d25a602816a6349fd3f2aee3ef48797e0b28f6c7568b27978f29c6"
+      url "https://github.com/shoon/takeout-helper-gphotos/releases/download/v0.1.4/takeout-helper-gphotos-v0.1.4-macos-x64.tar.gz"
+      sha256 "6a2809a9b6590a0c5e8c843984fa7dacef08a5ad785d0e6e82209c0e64d7563d"
     end
   end
 
   on_linux do
     if Hardware::CPU.arm?
-      url "https://github.com/shoon/takeout-helper-gphotos/releases/download/v0.1.3/takeout-helper-gphotos-v0.1.3-linux-arm64.tar.gz"
-      sha256 "e978b90ad2120d32e66841c6febc129743039a1deace54b5e399e8bdab8c3cce"
+      url "https://github.com/shoon/takeout-helper-gphotos/releases/download/v0.1.4/takeout-helper-gphotos-v0.1.4-linux-arm64.tar.gz"
+      sha256 "591aabd3967509b6c7d2c5a0b084b56b3a1e1974f8c39108c0d60d19594cf9d1"
     else
-      url "https://github.com/shoon/takeout-helper-gphotos/releases/download/v0.1.3/takeout-helper-gphotos-v0.1.3-linux-x64.tar.gz"
-      sha256 "95ce685d56ccdcf05511d05f296acb20ed89a3c636508aeec5d5068e22b89659"
+      url "https://github.com/shoon/takeout-helper-gphotos/releases/download/v0.1.4/takeout-helper-gphotos-v0.1.4-linux-x64.tar.gz"
+      sha256 "2b541b75e3db2c663dba409a50b11a73aa8910c044c8eed90d8cd218addd73ea"
     end
   end
 
