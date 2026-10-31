@@ -1,31 +1,73 @@
-name: brew bump
+name: Update takeout-helper-gphotos
+# brew bump cannot update this formula (its URLs are inside on_macos/on_linux
+# blocks), so a reviewed script stages a verified update and this workflow opens
+# a formula-only PR. fv-ssh-unlock is handled only by Sync fv-ssh-unlock release.
 on:
   push:
     branches: [main]
-    paths: [.github/workflows/autobump.yml]
+    paths: [.github/workflows/autobump.yml, .github/scripts/bump_takeout.py]
   schedule:
     - cron: '35 13 * * *'
   workflow_dispatch:
 permissions: {}
+concurrency:
+  group: takeout-helper-gphotos-update
+  cancel-in-progress: false
 defaults:
   run:
-    shell: bash -xeuo pipefail {0}
+    shell: bash -euo pipefail {0}
 jobs:
-  autobump:
+  update:
+    if: github.repository == 'shoon/homebrew-tap' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       contents: write
       pull-requests: write
     steps:
-      - name: Set up Homebrew
-        id: set-up-homebrew
-        uses: Homebrew/actions/setup-homebrew@848c272c7bfe984a197bd4d16383f4c106ec61e6 # 2026.09.21.1
-      - name: Set up git
-        id: git_setup
-        uses: Homebrew/actions/git-user-config@848c272c7bfe984a197bd4d16383f4c106ec61e6 # 2026.09.21.1
-      - name: Bump other formulae without duplicating verified fv-ssh-unlock updates
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Stage a verified update from the latest stable release
+        id: stage
         env:
-          HOMEBREW_GITHUB_API_TOKEN: ${{ github.token }}
-          HOMEBREW_GIT_COMMITTER_NAME: ${{ steps.git_setup.outputs.name }}
-          HOMEBREW_GIT_COMMITTER_EMAIL: ${{ steps.git_setup.outputs.email }}
-        run: brew bump --no-fork --open-pr --formulae --bump-synced shoon/tap/takeout-helper-gphotos
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="$(python3 -I .github/scripts/bump_takeout.py)"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+      - name: Open a formula-only PR
+        if: steps.stage.outputs.version != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.stage.outputs.version }}
+        run: |
+          formula=Formula/takeout-helper-gphotos.rb
+          branch="automation/takeout-helper-gphotos-v${VERSION}"
+          title="takeout-helper-gphotos: update to ${VERSION}"
+          test "$(git status --porcelain)" = " M ${formula}" || { echo "::error::Unexpected working tree changes"; git status --porcelain; exit 1; }
+          existing="$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$branch" --state all --json url,state --jq '.[0] | select(.) | "\(.state) \(.url)"')"
+          if [ -n "$existing" ]; then
+            echo "A PR for ${VERSION} already exists (${existing}); not recreating or reopening it."
+            exit 0
+          fi
+          gh auth setup-git
+          remote="https://github.com/${GITHUB_REPOSITORY}.git"
+          if git ls-remote --exit-code --heads "$remote" "$branch" >/dev/null; then
+            # Recover only an exact earlier push whose PR creation failed.
+            git fetch --quiet "$remote" "refs/heads/${branch}"
+            test "$(git rev-parse FETCH_HEAD^)" = "$(git rev-parse HEAD)" || { echo "::error::${branch} is not based on current main"; exit 1; }
+            git diff --quiet FETCH_HEAD -- "$formula" || { echo "::error::${branch} differs from the verified update"; exit 1; }
+            test -z "$(git diff --name-only HEAD FETCH_HEAD -- . ":!${formula}")" || { echo "::error::${branch} has unrelated changes"; exit 1; }
+          else
+            git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              commit --quiet -m "$title" -- "$formula"
+            git push --quiet "$remote" "HEAD:refs/heads/${branch}"
+          fi
+          gh pr create --repo "$GITHUB_REPOSITORY" --base main --head "$branch" --title "$title" --body "$(cat <<EOF
+          Upstream: https://github.com/shoon/takeout-helper-gphotos/releases/tag/v${VERSION}
+
+          Every platform archive was downloaded and matched against the release's \`SHA256SUMS.txt\`, and each contains the binary and the documents the formula installs. Only the four URL and sha256 lines change.
+
+          Approve GitHub's PR workflow runs if prompted, then merge normally after both **brew test-bot** jobs pass. This formula has no bottles.
+          EOF
+          )"

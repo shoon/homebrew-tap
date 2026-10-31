@@ -47,6 +47,18 @@ macOS and Linux, forbids source fallback, checks the version, and runs `brew tes
 The upstream Release distribution status issue closes after this and Scoop's
 current-main installation check both pass.
 
+## takeout-helper-gphotos
+
+`brew bump` cannot update this formula because its URLs sit inside
+`on_macos`/`on_linux` blocks. Instead, **Update takeout-helper-gphotos** runs
+daily (13:35 UTC) or on demand. It takes the latest stable release, downloads all
+four archives, matches them against the release's `SHA256SUMS.txt`, checks each
+archive holds the binary and documents the formula installs, and opens a
+formula-only PR. It never downgrades, never recreates or reopens an existing PR
+for the same version, and refuses a pre-existing branch that is not exactly its
+own update. Approve the PR's workflow runs if GitHub asks, then merge normally
+after both **brew test-bot** jobs pass; this formula has no bottles.
+
 ## Setup and recovery
 
 Merge the source release-tools PR first, then this automation PR. The shared action
